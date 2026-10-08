@@ -19,6 +19,9 @@
     "szepeviktor/phpstan-wordpress": "^2.0"
   },
   "scripts": {
+    "post-install-cmd": [
+      "@php bin/install.php"
+    ],
     "analyse": "php -d memory_limit=512M vendor/bin/phpstan analyse"
   }
 }
