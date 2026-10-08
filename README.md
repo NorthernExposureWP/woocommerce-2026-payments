@@ -70,7 +70,7 @@ The project-level Composer autoloader is loaded before WordPress loads plugins.
 WooCommerce 11.1.2 is included in the repository:
 
 ```text
-public/wp-content/plugins/woocommerce/
+wp-content/plugins/woocommerce/
 ```
 
 Activate it with WP-CLI:
