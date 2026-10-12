@@ -2,3 +2,4 @@
 .idea/
 /vendor/
 /public/wp-config.php
+/wp-content/uploads
