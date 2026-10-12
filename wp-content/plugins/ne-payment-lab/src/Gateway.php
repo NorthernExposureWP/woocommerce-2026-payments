@@ -52,8 +52,43 @@ class Gateway extends \WC_Payment_Gateway {
             ];
         }
 
+        if ( 'failure' === $this->testMode ) {
+            wc_add_notice(
+                'Test payment declined. Please try again.',
+                'error'
+            );
+
+            return [
+                'result' => 'failure',
+            ];
+        }
+
+        if ( $order->is_paid() ) {
+            wc_add_notice(
+                'This order has already been paid.',
+                'error'
+            );
+
+            return [
+                'result' => 'failure',
+            ];
+        }
+
+        if ( $order->get_transaction_id() ) {
+            wc_add_notice(
+                'This order already has a transaction ID.',
+                'error'
+            );
+
+            return [
+                'result' => 'failure',
+            ];
+        }
+
         // Simulate a successful test payment.
-        if ( ! $order->payment_complete() ) {
+        $transactionId = 'ne-test-' . wp_generate_uuid4();
+        $order->set_transaction_id( $transactionId );
+        if ( ! $order->payment_complete( $transactionId ) ) {
             wc_add_notice(
                 'Unable to complete the test payment. Please try again.',
                 'error'
