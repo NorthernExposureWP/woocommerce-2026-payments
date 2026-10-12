@@ -4,3 +4,4 @@
 /public/wp-config.php
 /wp-content/uploads
 /wp-content/plugins/woocommerce-paypal-payments
+/wp-content/plugins/authorize-net-payments-for-woocommerce

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "44d78ef7d58855bfcf4abfd64f2a1092",
+    "content-hash": "9b52df05e33cb2fd9b328b2629715884",
     "packages": [
         {
             "name": "composer/installers",
@@ -299,6 +299,24 @@
                 "source": "https://github.com/johnpbloch/wordpress-core-installer/tree/master"
             },
             "time": "2020-04-16T21:44:57+00:00"
+        },
+        {
+            "name": "wpackagist-plugin/authorize-net-payments-for-woocommerce",
+            "version": "1.0.5",
+            "source": {
+                "type": "svn",
+                "url": "https://plugins.svn.wordpress.org/authorize-net-payments-for-woocommerce/",
+                "reference": "tags/1.0.5"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://downloads.wordpress.org/plugin/authorize-net-payments-for-woocommerce.1.0.5.zip"
+            },
+            "require": {
+                "composer/installers": "^1.0 || ^2.0"
+            },
+            "type": "wordpress-plugin",
+            "homepage": "https://wordpress.org/plugins/authorize-net-payments-for-woocommerce/"
         },
         {
             "name": "wpackagist-plugin/woocommerce-paypal-payments",
