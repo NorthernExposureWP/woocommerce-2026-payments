@@ -3,3 +3,4 @@
 /vendor/
 /public/wp-config.php
 /wp-content/uploads
+/wp-content/plugins/woocommerce-paypal-payments
