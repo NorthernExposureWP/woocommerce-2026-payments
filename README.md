@@ -1,6 +1,10 @@
-# WooCommerce 2026 Payments
+# WooCommerce 2026 Payment and Shipping Methods
 
-Includes: 
-- custom sample payment method
+## Payment Methods: 
+- custom payment method NE Payment Lab
 - PayPal
-- Authorize.Net
+- Authorize.Net 
+
+
+## Shipping Methods:
+- customer shipping method NE Flat Rate Shipping
