@@ -1,0 +1,22 @@
+.column-ne_shipping_weight {
+    width: 100px;
+}
+
+.column-ne_shipping_bulky,
+.column-ne_shipping_fragile {
+    width: 90px;
+}
+
+.ne-shipping-weight-input {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+}
+
+.column-ne_shipping_bulky select,
+.column-ne_shipping_fragile select {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
