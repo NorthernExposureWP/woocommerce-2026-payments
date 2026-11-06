@@ -12,11 +12,11 @@ class Gateway extends \WC_Payment_Gateway {
         $this->method_title       = 'NE Payment Lab';
         $this->method_description = 'Educational gateway for testing WooCommerce payment flows.';
         $this->has_fields         = false;
-        $this->testMode = $this->get_option('test_mode', 'success');
 
         $this->init_form_fields();
         $this->init_settings();
 
+        $this->testMode = $this->get_option('test_mode', 'success');
         $this->title       = $this->get_option( 'title' );
         $this->description = $this->get_option( 'description' );
         $this->enabled     = $this->get_option( 'enabled', 'no' );
@@ -87,7 +87,6 @@ class Gateway extends \WC_Payment_Gateway {
 
         // Simulate a successful test payment.
         $transactionId = 'ne-test-' . wp_generate_uuid4();
-        $order->set_transaction_id( $transactionId );
         if ( ! $order->payment_complete( $transactionId ) ) {
             wc_add_notice(
                 'Unable to complete the test payment. Please try again.',
