@@ -5,6 +5,8 @@ namespace NE\PaymentLab;
 defined( 'ABSPATH' ) || exit;
 
 class Gateway extends \WC_Payment_Gateway {
+    private const META_PAYMENT_ID = '_ne_payment_lab_payment_id';
+
     private string $testMode = 'success';
 
     public function __construct() {
@@ -52,17 +54,6 @@ class Gateway extends \WC_Payment_Gateway {
             ];
         }
 
-        if ( 'failure' === $this->testMode ) {
-            wc_add_notice(
-                'Test payment declined. Please try again.',
-                'error'
-            );
-
-            return [
-                'result' => 'failure',
-            ];
-        }
-
         if ( $order->is_paid() ) {
             wc_add_notice(
                 'This order has already been paid.',
@@ -85,11 +76,20 @@ class Gateway extends \WC_Payment_Gateway {
             ];
         }
 
-        // Simulate a successful test payment.
-        $transactionId = 'ne-test-' . wp_generate_uuid4();
-        if ( ! $order->payment_complete( $transactionId ) ) {
+        $payment = $this->create_provider_payment( $order );
+
+        if ( is_wp_error( $payment ) ) {
+            $this->log(
+                sprintf(
+                    'Order #%d: %s (%s)',
+                    $order->get_id(),
+                    $payment->get_error_message(),
+                    $payment->get_error_code()
+                )
+            );
+
             wc_add_notice(
-                'Unable to complete the test payment. Please try again.',
+                'Unable to start the payment. Please try again later.',
                 'error'
             );
 
@@ -98,10 +98,108 @@ class Gateway extends \WC_Payment_Gateway {
             ];
         }
 
+        $order->update_meta_data( self::META_PAYMENT_ID, $payment['payment_id'] );
+        $order->save();
+
         return [
             'result'   => 'success',
-            'redirect' => $this->get_return_url( $order ),
+            'redirect' => $payment['payment_url'],
         ];
+    }
+
+    /**
+     * Creates a payment at the payment provider (POST {provider_url}/api/payments).
+     *
+     * @return array{payment_id: string, payment_url: string}|\WP_Error
+     */
+    private function create_provider_payment( \WC_Order $order ) {
+        $providerUrl = trim( (string) $this->get_option( 'provider_url', '' ) );
+
+        if ( ! $this->is_http_url( $providerUrl ) ) {
+            return new \WP_Error(
+                'provider_url_invalid',
+                'Payment provider URL is not configured or is not a valid http(s) URL.'
+            );
+        }
+
+        $body = wp_json_encode( [
+            'order_id'     => $order->get_id(),
+            'amount'       => wc_format_decimal( $order->get_total(), wc_get_price_decimals() ),
+            'currency'     => $order->get_currency(),
+            'return_url'   => $this->get_return_url( $order ),
+            // The route is not registered yet: it will receive the provider's messages in a later step.
+            'callback_url' => rest_url( 'ne-payment-lab/v1/callback' ),
+        ] );
+
+        if ( false === $body ) {
+            return new \WP_Error( 'request_encode_failed', 'Unable to encode the request as JSON.' );
+        }
+
+        $response = wp_remote_post(
+            untrailingslashit( $providerUrl ) . '/api/payments',
+            [
+                'timeout' => 15,
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'Accept'       => 'application/json',
+                ],
+                'body'    => $body,
+            ]
+        );
+
+        if ( is_wp_error( $response ) ) {
+            return new \WP_Error( 'http_request_failed', $response->get_error_message() );
+        }
+
+        $status  = (int) wp_remote_retrieve_response_code( $response );
+        $rawBody = (string) wp_remote_retrieve_body( $response );
+
+        if ( 201 !== $status ) {
+            return new \WP_Error(
+                'unexpected_status',
+                sprintf( 'Provider returned HTTP %d: %s', $status, mb_substr( $rawBody, 0, 500 ) )
+            );
+        }
+
+        $data = json_decode( $rawBody, true );
+
+        if ( ! is_array( $data ) ) {
+            return new \WP_Error(
+                'invalid_response',
+                'Provider response is not a valid JSON object: ' . mb_substr( $rawBody, 0, 500 )
+            );
+        }
+
+        $paymentId  = $data['payment_id'] ?? null;
+        $paymentUrl = $data['payment_url'] ?? null;
+
+        if ( ! is_string( $paymentId ) || 1 !== preg_match( '/^[A-Za-z0-9_-]{1,100}$/', $paymentId ) ) {
+            return new \WP_Error( 'invalid_response', 'Provider response contains a missing or invalid payment_id.' );
+        }
+
+        if ( ! is_string( $paymentUrl ) || ! $this->is_http_url( $paymentUrl ) ) {
+            return new \WP_Error( 'invalid_response', 'Provider response contains a missing or invalid payment_url.' );
+        }
+
+        return [
+            'payment_id'  => $paymentId,
+            'payment_url' => $paymentUrl,
+        ];
+    }
+
+    private function is_http_url( string $url ): bool {
+        if ( false === filter_var( $url, FILTER_VALIDATE_URL ) ) {
+            return false;
+        }
+
+        $scheme = strtolower( (string) wp_parse_url( $url, PHP_URL_SCHEME ) );
+        $host   = (string) wp_parse_url( $url, PHP_URL_HOST );
+
+        return in_array( $scheme, [ 'http', 'https' ], true ) && '' !== $host;
+    }
+
+    private function log( string $message ): void {
+        wc_get_logger()->error( $message, [ 'source' => $this->id ] );
     }
 
     public function init_form_fields(): void {
@@ -121,6 +219,13 @@ class Gateway extends \WC_Payment_Gateway {
                     'success' => 'Success',
                     'failure' => 'Failure',
                 ],
+                'desc_tip'    => true,
+            ],
+            'provider_url' => [
+                'title'       => 'Payment Provider URL',
+                'type'        => 'text',
+                'description' => 'Base URL of the payment provider, e.g. http://localhost:8081 (without /api/payments).',
+                'default'     => '',
                 'desc_tip'    => true,
             ],
             'title' => [
