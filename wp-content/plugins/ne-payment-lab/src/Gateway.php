@@ -2,14 +2,15 @@
 
 namespace NE\PaymentLab;
 
-defined( 'ABSPATH' ) || exit;
+defined( 'ABSPATH') || exit;
 
-class Gateway extends \WC_Payment_Gateway {
+class Gateway extends \WC_Payment_Gateway
+{
     private const META_PAYMENT_ID = '_ne_payment_lab_payment_id';
 
-    private string $testMode = 'success';
 
-    public function __construct() {
+    public function __construct()
+    {
         $this->id                 = 'ne_payment_lab';
         $this->method_title       = 'NE Payment Lab';
         $this->method_description = 'Educational gateway for testing WooCommerce payment flows.';
@@ -18,10 +19,9 @@ class Gateway extends \WC_Payment_Gateway {
         $this->init_form_fields();
         $this->init_settings();
 
-        $this->testMode = $this->get_option('test_mode', 'success');
-        $this->title       = $this->get_option( 'title' );
-        $this->description = $this->get_option( 'description' );
-        $this->enabled     = $this->get_option( 'enabled', 'no' );
+        $this->title       = $this->get_option('title');
+        $this->description = $this->get_option('description');
+        $this->enabled     = $this->get_option('enabled', 'no');
 
         add_action(
             'woocommerce_update_options_payment_gateways_' . $this->id,
@@ -29,10 +29,11 @@ class Gateway extends \WC_Payment_Gateway {
         );
     }
 
-    public function process_payment( $order_id ): array {
+    public function process_payment($order_id): array
+    {
         $order = wc_get_order( $order_id );
 
-        if ( ! $order instanceof \WC_Order ) {
+        if (!$order instanceof \WC_Order) {
             wc_add_notice(
                 'Unable to process payment: order not found.',
                 'error'
@@ -43,7 +44,7 @@ class Gateway extends \WC_Payment_Gateway {
             ];
         }
 
-        if ( $order->get_payment_method() !== $this->id ) {
+        if ($order->get_payment_method() !== $this->id) {
             wc_add_notice(
                 'Unable to process payment: incorrect payment method.',
                 'error'
@@ -54,7 +55,7 @@ class Gateway extends \WC_Payment_Gateway {
             ];
         }
 
-        if ( $order->is_paid() ) {
+        if ($order->is_paid()) {
             wc_add_notice(
                 'This order has already been paid.',
                 'error'
@@ -65,7 +66,7 @@ class Gateway extends \WC_Payment_Gateway {
             ];
         }
 
-        if ( $order->get_transaction_id() ) {
+        if ($order->get_transaction_id()) {
             wc_add_notice(
                 'This order already has a transaction ID.',
                 'error'
@@ -76,9 +77,9 @@ class Gateway extends \WC_Payment_Gateway {
             ];
         }
 
-        $payment = $this->create_provider_payment( $order );
+        $payment = $this->create_provider_payment($order);
 
-        if ( is_wp_error( $payment ) ) {
+        if (is_wp_error($payment)) {
             $this->log(
                 sprintf(
                     'Order #%d: %s (%s)',
@@ -98,7 +99,7 @@ class Gateway extends \WC_Payment_Gateway {
             ];
         }
 
-        $order->update_meta_data( self::META_PAYMENT_ID, $payment['payment_id'] );
+        $order->update_meta_data(self::META_PAYMENT_ID, $payment['payment_id']);
         $order->save();
 
         return [
@@ -112,10 +113,19 @@ class Gateway extends \WC_Payment_Gateway {
      *
      * @return array{payment_id: string, payment_url: string}|\WP_Error
      */
-    private function create_provider_payment( \WC_Order $order ) {
-        $providerUrl = trim( (string) $this->get_option( 'provider_url', '' ) );
+    private function create_provider_payment(\WC_Order $order)
+    {
+        $providerUrl = trim($this->get_option('provider_url', '' ));
+        $callbackUrl = trim($this->get_option( 'callback_url', ''));
 
-        if ( ! $this->is_http_url( $providerUrl ) ) {
+        if (!$this->is_http_url($callbackUrl)) {
+            return new \WP_Error(
+                'callback_url_invalid',
+                'Callback URL is not configured or is not a valid http(s) URL.'
+            );
+        }
+
+        if (!$this->is_http_url($providerUrl)) {
             return new \WP_Error(
                 'provider_url_invalid',
                 'Payment provider URL is not configured or is not a valid http(s) URL.'
@@ -124,19 +134,19 @@ class Gateway extends \WC_Payment_Gateway {
 
         $body = wp_json_encode( [
             'order_id'     => $order->get_id(),
-            'amount'       => wc_format_decimal( $order->get_total(), wc_get_price_decimals() ),
+            'amount'       => wc_format_decimal($order->get_total(), wc_get_price_decimals()),
             'currency'     => $order->get_currency(),
-            'return_url'   => $this->get_return_url( $order ),
+            'return_url'   => $this->get_return_url($order),
             // The route is not registered yet: it will receive the provider's messages in a later step.
-            'callback_url' => rest_url( 'ne-payment-lab/v1/callback' ),
+            'callback_url' => $callbackUrl,
         ] );
 
         if ( false === $body ) {
-            return new \WP_Error( 'request_encode_failed', 'Unable to encode the request as JSON.' );
+            return new \WP_Error('request_encode_failed', 'Unable to encode the request as JSON.');
         }
 
         $response = wp_remote_post(
-            untrailingslashit( $providerUrl ) . '/api/payments',
+            untrailingslashit($providerUrl) . '/api/payments',
             [
                 'timeout' => 15,
                 'headers' => [
@@ -147,38 +157,38 @@ class Gateway extends \WC_Payment_Gateway {
             ]
         );
 
-        if ( is_wp_error( $response ) ) {
-            return new \WP_Error( 'http_request_failed', $response->get_error_message() );
+        if (is_wp_error( $response)) {
+            return new \WP_Error('http_request_failed', $response->get_error_message());
         }
 
-        $status  = (int) wp_remote_retrieve_response_code( $response );
-        $rawBody = (string) wp_remote_retrieve_body( $response );
+        $status  = (int) wp_remote_retrieve_response_code($response);
+        $rawBody = wp_remote_retrieve_body($response);
 
-        if ( 201 !== $status ) {
+        if (201 !== $status) {
             return new \WP_Error(
                 'unexpected_status',
-                sprintf( 'Provider returned HTTP %d: %s', $status, mb_substr( $rawBody, 0, 500 ) )
+                sprintf('Provider returned HTTP %d: %s', $status, mb_substr($rawBody, 0, 500))
             );
         }
 
-        $data = json_decode( $rawBody, true );
+        $data = json_decode($rawBody);
 
-        if ( ! is_array( $data ) ) {
+        if (!$data instanceof \stdClass) {
             return new \WP_Error(
                 'invalid_response',
-                'Provider response is not a valid JSON object: ' . mb_substr( $rawBody, 0, 500 )
+                'Provider response is not a valid JSON object: ' . mb_substr($rawBody, 0, 500)
             );
         }
 
-        $paymentId  = $data['payment_id'] ?? null;
-        $paymentUrl = $data['payment_url'] ?? null;
+        $paymentId  = $data->payment_id ?? null;
+        $paymentUrl = $data->payment_url ?? null;
 
         if ( ! is_string( $paymentId ) || 1 !== preg_match( '/^[A-Za-z0-9_-]{1,100}$/', $paymentId ) ) {
-            return new \WP_Error( 'invalid_response', 'Provider response contains a missing or invalid payment_id.' );
+            return new \WP_Error('invalid_response', 'Provider response contains a missing or invalid payment_id.');
         }
 
-        if ( ! is_string( $paymentUrl ) || ! $this->is_http_url( $paymentUrl ) ) {
-            return new \WP_Error( 'invalid_response', 'Provider response contains a missing or invalid payment_url.' );
+        if (!is_string( $paymentUrl) || ! $this->is_http_url($paymentUrl)) {
+            return new \WP_Error('invalid_response', 'Provider response contains a missing or invalid payment_url.');
         }
 
         return [
@@ -187,22 +197,25 @@ class Gateway extends \WC_Payment_Gateway {
         ];
     }
 
-    private function is_http_url( string $url ): bool {
-        if ( false === filter_var( $url, FILTER_VALIDATE_URL ) ) {
+    private function is_http_url(string $url): bool
+    {
+        if (false === filter_var($url, FILTER_VALIDATE_URL)) {
             return false;
         }
 
-        $scheme = strtolower( (string) wp_parse_url( $url, PHP_URL_SCHEME ) );
-        $host   = (string) wp_parse_url( $url, PHP_URL_HOST );
+        $scheme = strtolower((string) wp_parse_url($url, PHP_URL_SCHEME));
+        $host   = (string) wp_parse_url($url, PHP_URL_HOST);
 
-        return in_array( $scheme, [ 'http', 'https' ], true ) && '' !== $host;
+        return in_array($scheme, ['http', 'https'], true ) && '' !== $host;
     }
 
-    private function log( string $message ): void {
-        wc_get_logger()->error( $message, [ 'source' => $this->id ] );
+    private function log( string $message ): void
+    {
+        wc_get_logger()->error($message, ['source' => $this->id]);
     }
 
-    public function init_form_fields(): void {
+    public function init_form_fields(): void
+    {
         $this->form_fields = [
             'enabled' => [
                 'title'   => 'Enable/Disable',
@@ -210,21 +223,17 @@ class Gateway extends \WC_Payment_Gateway {
                 'label'   => 'Enable Payment Lab',
                 'default' => 'no',
             ],
-            'test_mode' => [
-                'title'       => 'Test Mode',
-                'type'        => 'select',
-                'description' => 'Choose the simulated payment result.',
-                'default'     => 'success',
-                'options'     => [
-                    'success' => 'Success',
-                    'failure' => 'Failure',
-                ],
-                'desc_tip'    => true,
-            ],
             'provider_url' => [
                 'title'       => 'Payment Provider URL',
                 'type'        => 'text',
-                'description' => 'Base URL of the payment provider, e.g. http://localhost:8081 (without /api/payments).',
+                'description' => 'Base URL of the payment provider, e.g. http://host.docker.internal:8081 (without /api/payments).',
+                'default'     => '',
+                'desc_tip'    => true,
+            ],
+            'callback_url' => [
+                'title'       => 'Callback URL',
+                'type'        => 'text',
+                'description' => 'Full WooCommerce callback endpoint URL.',
                 'default'     => '',
                 'desc_tip'    => true,
             ],
