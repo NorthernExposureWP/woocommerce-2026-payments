@@ -15,6 +15,7 @@ add_action( 'plugins_loaded', static function (): void {
     }
 
     require_once __DIR__ . '/src/Gateway.php';
+    require_once __DIR__ . '/src/CallbackController.php';
     require_once __DIR__ . '/src/BlocksIntegration.php';
 
     add_filter( 'woocommerce_payment_gateways', static function ( array $gateways ): array {
@@ -41,4 +42,8 @@ add_action( 'before_woocommerce_init', function (): void {
             true
         );
     }
+});
+
+add_action( 'rest_api_init', static function (): void {
+    ( new \NE\PaymentLab\CallbackController( new \NE\PaymentLab\Gateway() ) )->register_routes();
 } );

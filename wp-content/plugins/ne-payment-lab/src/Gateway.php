@@ -6,7 +6,7 @@ defined( 'ABSPATH') || exit;
 
 class Gateway extends \WC_Payment_Gateway
 {
-    private const META_PAYMENT_ID = '_ne_payment_lab_payment_id';
+    public const META_PAYMENT_ID = '_ne_payment_lab_payment_id';
 
 
     public function __construct()
@@ -27,6 +27,14 @@ class Gateway extends \WC_Payment_Gateway
             'woocommerce_update_options_payment_gateways_' . $this->id,
             [ $this, 'process_admin_options' ]
         );
+    }
+
+    public function is_available(): bool
+    {
+        return parent::is_available()
+            && $this->is_http_url(trim($this->get_option('provider_url', '')))
+            && $this->is_http_url(trim($this->get_option('callback_url', '')))
+            && '' !== trim($this->get_option('callback_secret', ''));
     }
 
     public function process_payment($order_id): array
@@ -101,6 +109,8 @@ class Gateway extends \WC_Payment_Gateway
 
         $order->update_meta_data(self::META_PAYMENT_ID, $payment['payment_id']);
         $order->save();
+        $order->add_order_note('Payment created at provider: ' . $payment['payment_id']);
+        WC()->cart->empty_cart();
 
         return [
             'result'   => 'success',
@@ -137,7 +147,6 @@ class Gateway extends \WC_Payment_Gateway
             'amount'       => wc_format_decimal($order->get_total(), wc_get_price_decimals()),
             'currency'     => $order->get_currency(),
             'return_url'   => $this->get_return_url($order),
-            // The route is not registered yet: it will receive the provider's messages in a later step.
             'callback_url' => $callbackUrl,
         ] );
 
@@ -234,6 +243,13 @@ class Gateway extends \WC_Payment_Gateway
                 'title'       => 'Callback URL',
                 'type'        => 'text',
                 'description' => 'Full WooCommerce callback endpoint URL.',
+                'default'     => '',
+                'desc_tip'    => true,
+            ],
+            'callback_secret' => [
+                'title'       => 'Callback Secret',
+                'type'        => 'password',
+                'description' => 'Shared secret used to verify that callbacks come from the payment provider. Must be identical to CALLBACK_SECRET on the provider side.',
                 'default'     => '',
                 'desc_tip'    => true,
             ],
