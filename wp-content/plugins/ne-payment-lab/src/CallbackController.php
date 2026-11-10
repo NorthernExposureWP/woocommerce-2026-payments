@@ -218,6 +218,16 @@ class CallbackController
             );
         }
 
+        // A payment that has already been declined cannot be turned into a successful one.
+        if ( 'succeeded' === $status && (string) $order->get_meta( self::META_DECLINED_PAYMENT_ID ) === $paymentId ) {
+            return $this->reject(
+                409,
+                'payment_already_declined',
+                'The payment has already been declined.',
+                "Succeeded callback for an already declined payment ({$context})."
+            );
+        }
+
         if ( 'succeeded' === $status ) {
             // Marks the order as paid and stores the payment ID as the transaction ID.
             if ( ! $order->payment_complete( $paymentId ) ) {
@@ -231,12 +241,18 @@ class CallbackController
 
             $order->add_order_note( sprintf( 'Payment Lab: payment succeeded (payment ID: %s).', $paymentId ) );
         } else {
+            $order->update_meta_data( self::META_DECLINED_PAYMENT_ID, $paymentId );
             $order->add_order_note(
                 sprintf( 'Payment Lab: payment declined by the provider (payment ID: %s). The order has not been paid.', $paymentId )
             );
 
-            $order->update_meta_data( self::META_DECLINED_PAYMENT_ID, $paymentId );
-            $order->save();
+            // Only a pending order is moved to "failed" (e.g. a cancelled order must not be revived).
+            // WooCommerce then lets the customer pay again from the order-received / order-pay page.
+            if ( $order->has_status( 'pending' ) ) {
+                $order->update_status( 'failed' ); // also saves the meta set above
+            } else {
+                $order->save();
+            }
         }
 
         return new \WP_REST_Response( [ 'result' => 'ok' ], 200 );
