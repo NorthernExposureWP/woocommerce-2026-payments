@@ -19,7 +19,7 @@ class CallbackController
     private const SIGNATURE_HEADER = 'X-Payment-Signature';
     private const MAX_CLOCK_SKEW   = 300; // seconds
 
-    private const META_DECLINED_PAYMENT_ID = '_ne_payment_lab_declined_payment_id';
+    public const META_DECLINED_PAYMENT_ID = '_ne_payment_lab_declined_payment_id';
 
     private Gateway $gateway;
 
