@@ -71,7 +71,12 @@ class CallbackController
         }
 
         if ( abs( time() - (int) $timestamp ) > self::MAX_CLOCK_SKEW ) {
-            return $this->reject( 401, 'invalid_signature', 'Invalid signature.', 'Timestamp is outside the allowed time window.' );
+            return $this->reject(
+                401,
+                'invalid_timestamp',
+                'Invalid timestamp.',
+                'Timestamp is outside the allowed time window.'
+            );
         }
 
         $expected = hash_hmac( 'sha256', $timestamp . '.' . $request->get_body(), $secret );
