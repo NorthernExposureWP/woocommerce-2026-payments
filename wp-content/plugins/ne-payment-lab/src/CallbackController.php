@@ -22,6 +22,7 @@ class CallbackController
     public const META_DECLINED_PAYMENT_ID = '_ne_payment_lab_declined_payment_id';
 
     private Gateway $gateway;
+    private string $requestId = '';
 
     public function __construct(Gateway $gateway)
     {
@@ -51,6 +52,9 @@ class CallbackController
      */
     public function authenticate( \WP_REST_Request $request )
     {
+        $this->requestId = wp_generate_uuid4();
+        $this->log( 'info', sprintf( 'Callback received (request %s, method %s, route %s).', $this->requestId, $request->get_method(), $request->get_route() ) );
+
         $secret = trim( (string) $this->gateway->get_option( 'callback_secret', '' ) );
 
         if ( '' === $secret ) {
@@ -85,6 +89,8 @@ class CallbackController
             return $this->reject( 401, 'invalid_signature', 'Invalid signature.', 'Signature does not match.' );
         }
 
+        $this->log( 'info', sprintf( 'Callback authenticated (request %s, timestamp age %d seconds).', $this->requestId, abs( time() - (int) $timestamp ) ) );
+
         return true;
     }
 
@@ -95,10 +101,16 @@ class CallbackController
      */
     public function handle( \WP_REST_Request $request )
     {
+        // Keep logging useful if handle() is invoked without the REST permission callback.
+        if ( '' === $this->requestId ) {
+            $this->requestId = wp_generate_uuid4();
+            $this->log( 'info', sprintf( 'Callback received (request %s, method %s, route %s).', $this->requestId, $request->get_method(), $request->get_route() ) );
+        }
+
         try {
             return $this->process( $request );
         } catch ( \Throwable $e ) {
-            $this->log( 'error', sprintf( 'Callback failed: %s: %s', get_class( $e ), $e->getMessage() ) );
+            $this->log( 'error', sprintf( 'Callback failed (request %s%s): %s at %s:%d.', $this->requestId, $this->exception_context( $request ), get_class( $e ), $e->getFile(), $e->getLine() ) );
 
             return new \WP_Error(
                 'ne_payment_lab_internal_error',
@@ -154,6 +166,7 @@ class CallbackController
         }
 
         $context = sprintf( 'order #%d, payment %s', $orderId, $paymentId );
+        $logContext = sprintf( 'request %s, %s, status %s', $this->requestId, $context, $status );
 
         // 1. The order exists.
         $order = wc_get_order( $orderId );
@@ -208,7 +221,7 @@ class CallbackController
         // A repeated delivery of a callback that has already been applied is acknowledged
         // with HTTP 200 and is not processed again.
         if ( $this->is_duplicate( $order, $status, $paymentId ) ) {
-            $this->log( 'info', "Duplicate {$status} callback acknowledged ({$context})." );
+            $this->log( 'info', "Duplicate {$status} callback acknowledged ({$logContext})." );
 
             return new \WP_REST_Response( [ 'result' => 'ok', 'duplicate' => true ], 200 );
         }
@@ -235,6 +248,9 @@ class CallbackController
 
         if ( 'succeeded' === $status ) {
             // Marks the order as paid and stores the payment ID as the transaction ID.
+            $previousStatus = $order->get_status();
+            $this->log( 'info', sprintf( 'Success processing started (request %s, %s, amount %s %s, prior status %s).', $this->requestId, $context, $amount, $currency, $previousStatus ) );
+
             if ( ! $order->payment_complete( $paymentId ) ) {
                 return $this->reject(
                     409,
@@ -245,7 +261,9 @@ class CallbackController
             }
 
             $order->add_order_note( sprintf( 'Payment Lab: payment succeeded (payment ID: %s).', $paymentId ) );
+            $this->log( 'info', sprintf( 'Success processing completed (request %s, %s, resulting status %s, transaction ID %s).', $this->requestId, $context, $order->get_status(), $order->get_transaction_id() ) );
         } else {
+            $previousStatus = $order->get_status();
             $order->update_meta_data( self::META_DECLINED_PAYMENT_ID, $paymentId );
             $order->add_order_note(
                 sprintf( 'Payment Lab: payment declined by the provider (payment ID: %s). The order has not been paid.', $paymentId )
@@ -258,6 +276,7 @@ class CallbackController
             } else {
                 $order->save();
             }
+            $this->log( 'info', sprintf( 'Decline processing completed (request %s, %s, prior status %s, resulting status %s).', $this->requestId, $context, $previousStatus, $order->get_status() ) );
         }
 
         return new \WP_REST_Response( [ 'result' => 'ok' ], 200 );
@@ -287,7 +306,7 @@ class CallbackController
     {
         $this->log(
             'warning',
-            sprintf( 'Callback rejected (HTTP %d, %s): %s', $status, $code, '' !== $logMessage ? $logMessage : $message )
+            sprintf( 'Callback rejected (request %s, HTTP %d, %s): %s', $this->requestId, $status, $code, '' !== $logMessage ? $logMessage : $message )
         );
 
         return new \WP_Error( 'ne_payment_lab_' . $code, $message, [ 'status' => $status ] );
@@ -296,5 +315,26 @@ class CallbackController
     private function log( string $level, string $message ): void
     {
         wc_get_logger()->log( $level, $message, [ 'source' => $this->gateway->id ] );
+    }
+
+    /** Safe identifiers from a malformed request, for exception diagnostics only. */
+    private function exception_context( \WP_REST_Request $request ): string
+    {
+        $data = json_decode( $request->get_body() );
+        if ( ! $data instanceof \stdClass ) {
+            return '';
+        }
+
+        $orderId = $data->order_id ?? null;
+        $paymentId = $data->payment_id ?? null;
+        $context = '';
+        if ( is_int( $orderId ) && $orderId > 0 ) {
+            $context .= sprintf( ', order #%d', $orderId );
+        }
+        if ( is_string( $paymentId ) && 1 === preg_match( '/^[A-Za-z0-9_-]{1,100}$/', $paymentId ) ) {
+            $context .= ', payment ' . $paymentId;
+        }
+
+        return $context;
     }
 }
