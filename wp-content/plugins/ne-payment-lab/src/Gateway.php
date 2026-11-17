@@ -200,10 +200,35 @@ class Gateway extends \WC_Payment_Gateway
             return new \WP_Error('invalid_response', 'Provider response contains a missing or invalid payment_url.');
         }
 
+        if (!$this->payment_url_matches_provider($providerUrl, $paymentUrl)) {
+            return new \WP_Error('invalid_response', 'Provider response contains a payment_url that does not match the configured provider URL.');
+        }
+
         return [
             'payment_id'  => $paymentId,
             'payment_url' => $paymentUrl,
         ];
+    }
+
+    private function payment_url_matches_provider(string $providerUrl, string $paymentUrl): bool
+    {
+        $providerParts = wp_parse_url($providerUrl);
+        $paymentParts  = wp_parse_url($paymentUrl);
+
+        if (false === $providerParts || false === $paymentParts || isset($paymentParts['user']) || isset($paymentParts['pass'])) {
+            return false;
+        }
+
+        $providerScheme = strtolower((string) ($providerParts['scheme'] ?? ''));
+        $paymentScheme  = strtolower((string) ($paymentParts['scheme'] ?? ''));
+        $providerHost   = strtolower((string) ($providerParts['host'] ?? ''));
+        $paymentHost    = strtolower((string) ($paymentParts['host'] ?? ''));
+        $providerPort   = $providerParts['port'] ?? ('https' === $providerScheme ? 443 : 80);
+        $paymentPort    = $paymentParts['port'] ?? ('https' === $paymentScheme ? 443 : 80);
+
+        return $providerScheme === $paymentScheme
+            && $providerHost === $paymentHost
+            && (int) $providerPort === (int) $paymentPort;
     }
 
     private function is_http_url(string $url): bool
