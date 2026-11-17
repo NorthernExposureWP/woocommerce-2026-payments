@@ -58,7 +58,7 @@ class CallbackController
         $secret = trim( (string) $this->gateway->get_option( 'callback_secret', '' ) );
 
         if ( '' === $secret ) {
-            $this->log( 'error', 'Callback rejected: the callback secret is not configured.' );
+            $this->log( 'error', sprintf( 'Callback rejected (request %s): the callback secret is not configured.', $this->requestId ) );
 
             return new \WP_Error(
                 'ne_payment_lab_not_configured',
@@ -251,7 +251,9 @@ class CallbackController
             $previousStatus = $order->get_status();
             $this->log( 'info', sprintf( 'Success processing started (request %s, %s, amount %s %s, prior status %s).', $this->requestId, $context, $amount, $currency, $previousStatus ) );
 
-            if ( ! $order->payment_complete( $paymentId ) ) {
+            $paymentCompleteResult = $order->payment_complete( $paymentId );
+
+            if ( ! $paymentCompleteResult ) {
                 return $this->reject(
                     409,
                     'order_not_payable',
@@ -261,7 +263,8 @@ class CallbackController
             }
 
             $order->add_order_note( sprintf( 'Payment Lab: payment succeeded (payment ID: %s).', $paymentId ) );
-            $this->log( 'info', sprintf( 'Success processing completed (request %s, %s, resulting status %s, transaction ID %s).', $this->requestId, $context, $order->get_status(), $order->get_transaction_id() ) );
+            $paidDate = $order->get_date_paid();
+            $this->log( 'info', sprintf( 'Success processing completed (request %s, %s, payment_complete result %s, paid %s, paid date %s, resulting status %s, transaction ID %s).', $this->requestId, $context, var_export( $paymentCompleteResult, true ), $order->is_paid() ? 'yes' : 'no', $paidDate ? $paidDate->date( 'c' ) : 'none', $order->get_status(), $order->get_transaction_id() ) );
         } else {
             $previousStatus = $order->get_status();
             $order->update_meta_data( self::META_DECLINED_PAYMENT_ID, $paymentId );
