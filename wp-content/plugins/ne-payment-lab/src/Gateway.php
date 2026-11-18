@@ -33,6 +33,7 @@ class Gateway extends \WC_Payment_Gateway
     {
         return parent::is_available()
             && $this->is_http_url(trim($this->get_option('provider_url', '')))
+            && $this->is_http_url($this->get_provider_checkout_url())
             && $this->is_http_url(trim($this->get_option('callback_url', '')))
             && '' !== trim($this->get_option('callback_secret', ''));
     }
@@ -126,6 +127,7 @@ class Gateway extends \WC_Payment_Gateway
     private function create_provider_payment(\WC_Order $order)
     {
         $providerUrl = trim($this->get_option('provider_url', '' ));
+        $providerCheckoutUrl = $this->get_provider_checkout_url();
         $callbackUrl = trim($this->get_option( 'callback_url', ''));
 
         if (!$this->is_http_url($callbackUrl)) {
@@ -139,6 +141,13 @@ class Gateway extends \WC_Payment_Gateway
             return new \WP_Error(
                 'provider_url_invalid',
                 'Payment provider URL is not configured or is not a valid http(s) URL.'
+            );
+        }
+
+        if (!$this->is_http_url($providerCheckoutUrl)) {
+            return new \WP_Error(
+                'provider_checkout_url_invalid',
+                'Provider checkout URL is not configured or is not a valid http(s) URL.'
             );
         }
 
@@ -200,8 +209,8 @@ class Gateway extends \WC_Payment_Gateway
             return new \WP_Error('invalid_response', 'Provider response contains a missing or invalid payment_url.');
         }
 
-        if (!$this->payment_url_matches_provider($providerUrl, $paymentUrl)) {
-            return new \WP_Error('invalid_response', 'Provider response contains a payment_url that does not match the configured provider URL.');
+        if (!$this->payment_url_matches_provider($providerCheckoutUrl, $paymentUrl)) {
+            return new \WP_Error('invalid_response', 'Provider response contains a payment_url that does not match the configured provider checkout URL.');
         }
 
         return [
@@ -210,9 +219,9 @@ class Gateway extends \WC_Payment_Gateway
         ];
     }
 
-    private function payment_url_matches_provider(string $providerUrl, string $paymentUrl): bool
+    private function payment_url_matches_provider(string $providerCheckoutUrl, string $paymentUrl): bool
     {
-        $providerParts = wp_parse_url($providerUrl);
+        $providerParts = wp_parse_url($providerCheckoutUrl);
         $paymentParts  = wp_parse_url($paymentUrl);
 
         if (false === $providerParts || false === $paymentParts || isset($paymentParts['user']) || isset($paymentParts['pass'])) {
@@ -229,6 +238,11 @@ class Gateway extends \WC_Payment_Gateway
         return $providerScheme === $paymentScheme
             && $providerHost === $paymentHost
             && (int) $providerPort === (int) $paymentPort;
+    }
+
+    private function get_provider_checkout_url(): string
+    {
+        return trim($this->get_option('provider_checkout_url', 'http://localhost:8081'));
     }
 
     private function is_http_url(string $url): bool
@@ -260,8 +274,15 @@ class Gateway extends \WC_Payment_Gateway
             'provider_url' => [
                 'title'       => 'Payment Provider URL',
                 'type'        => 'text',
-                'description' => 'Base URL of the payment provider, e.g. http://host.docker.internal:8081 (without /api/payments).',
+                'description' => 'Server-side base URL WooCommerce uses to create payments, e.g. http://host.docker.internal:8081 (without /api/payments).',
                 'default'     => '',
+                'desc_tip'    => true,
+            ],
+            'provider_checkout_url' => [
+                'title'       => 'Provider Checkout URL',
+                'type'        => 'text',
+                'description' => 'Base URL customers use to open provider payment pages. This may differ from the server-side Payment Provider URL.',
+                'default'     => 'http://localhost:8081',
                 'desc_tip'    => true,
             ],
             'callback_url' => [
